@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WOA: Algoritmo de Optimización de la Ballena Jorobada</title>
+<style>
+:root{
+  --ink:#EAF3F0; --mute:#93AEB6; --rule:rgba(234,243,240,.16); --panel:rgba(4,16,24,.5);
+  --exp:#E9B949; --rod:#F2837B; --esp:#6FD6C9;
+  --serif:Charter,"Bitstream Charter","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:var(--bg,#123B4D);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;transition:background-color .9s ease}
+body::before{content:"";position:fixed;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.38));pointer-events:none}
+#ambient{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;transition:opacity 1s ease}
+#stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform:translate(-50%,-50%) scale(var(--s,1))}
+
+/* ---------- Diapositivas ---------- */
+.slide{position:absolute;inset:0;padding:70px 110px 70px 150px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transition:opacity .45s ease,visibility 0s linear .45s}
+.slide.on{opacity:1;visibility:visible;transition:opacity .45s ease}
+h1{font-family:var(--serif);font-weight:700;font-size:84px;line-height:1.02;margin:0 0 28px;letter-spacing:-.015em;max-width:12ch}
+h2{font-family:var(--serif);font-weight:700;font-size:52px;line-height:1.08;margin:0 0 34px;letter-spacing:-.01em;max-width:32ch}
+h3{font-family:var(--sans);font-size:26px;font-weight:600;margin:0 0 8px}
+p,li{font-size:27px;line-height:1.5;max-width:52ch;margin:0 0 16px}
+ul,ol{margin:0;padding-left:1.1em}
+li{margin-bottom:10px}
+.lead{font-size:30px;line-height:1.45;max-width:34ch;color:var(--ink)}
+.small,.small p{font-size:19px;color:var(--mute);line-height:1.5}
+.mute{color:var(--mute)}
+b,strong{font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:70px;flex:1;min-height:0}
+.cols.r{grid-template-columns:1.1fr .9fr}
+.cols.l{grid-template-columns:.85fr 1.15fr}
+.cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:44px}
+.stack>*+*{margin-top:22px}
+var{font-family:var(--serif);font-style:italic;font-size:1.08em}
+.exp{color:var(--exp)} .rod{color:var(--rod)} .esp{color:var(--esp)}
+.dot{display:inline-block;width:.62em;height:.62em;border-radius:50%;vertical-align:.04em;margin-right:.35em;background:currentColor}
+
+/* Ecuaciones */
+.eq{font-family:var(--serif);font-size:32px;line-height:1.55;background:var(--panel);border-left:4px solid var(--c,var(--ink));padding:16px 26px;border-radius:0 10px 10px 0;white-space:nowrap}
+.eq em{font-style:italic}
+.eq small{display:block;font-family:var(--sans);font-size:18px;color:var(--mute);white-space:normal;line-height:1.4;margin-top:4px}
+.c-exp{--c:var(--exp)} .c-rod{--c:var(--rod)} .c-esp{--c:var(--esp)}
+
+/* Definiciones */
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:26px 30px;align-items:baseline}
+dt{font-family:var(--serif);font-weight:700;font-size:28px;white-space:nowrap}
+dd{margin:0;font-size:25px;line-height:1.45;color:var(--ink)}
+dd .mute{display:block;font-size:19px}
+
+/* Tablas */
+table{border-collapse:collapse;width:100%;font-size:24px}
+th,td{text-align:left;padding:14px 16px;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.35}
+th{font-weight:600;color:var(--mute);font-size:18px;border-bottom:1px solid rgba(234,243,240,.4)}
+td:first-child{color:var(--mute)}
+tr.hl td{background:rgba(111,214,201,.08)}
+tr.hl td:first-child{color:var(--ink)}
+.cols>table,.cols>dl{align-self:start}
+
+/* Controles */
+button,select{white-space:nowrap;font:inherit;font-size:19px;color:var(--ink);background:rgba(234,243,240,.08);border:1px solid rgba(234,243,240,.3);border-radius:8px;padding:9px 18px;cursor:pointer}
+button:hover,select:hover{background:rgba(234,243,240,.16)}
+button.primary{background:var(--esp);color:#06202A;border-color:var(--esp);font-weight:600}
+button.primary:hover{filter:brightness(1.08)}
+select option{background:#0B2633}
+:focus-visible{outline:3px solid var(--esp);outline-offset:3px}
+input[type=range]{accent-color:var(--esp);width:100%}
+label.rng{display:grid;grid-template-columns:1fr auto;gap:2px 12px;font-size:18px;color:var(--mute)}
+label.rng input{grid-column:1/-1}
+label.rng output{color:var(--ink);font-variant-numeric:tabular-nums}
+.readout{font-size:21px;line-height:1.55;font-variant-numeric:tabular-nums;min-height:5em}
+.readout var{font-size:1.05em}
+canvas{display:block}
+
+/* Navegación */
+#gauge{position:absolute;left:62px;top:80px;bottom:80px;width:30px}
+#gauge .line{position:absolute;left:14px;top:0;bottom:0;width:2px;background:var(--rule)}
+#gauge button{position:absolute;left:6px;width:18px;height:18px;padding:0;border:0;background:transparent;border-radius:50%}
+#gauge button::after{content:"";position:absolute;left:5px;top:7px;width:8px;height:4px;background:rgba(234,243,240,.35);border-radius:2px}
+#gauge button.on::after{left:1px;top:1px;width:16px;height:16px;border-radius:50%;background:var(--esp);box-shadow:0 0 14px var(--esp)}
+#gauge .depth{position:absolute;left:-52px;width:50px;text-align:right;font-size:15px;color:var(--mute);transform:translateY(-1px);transition:top .5s ease;font-variant-numeric:tabular-nums}
+#nav{position:absolute;right:56px;bottom:26px;display:flex;gap:10px;align-items:center}
+#nav button{font-size:16px;padding:7px 14px}
+#nav span{font-size:16px;color:var(--mute);margin-right:8px}
+
+/* Portada */
+.hero canvas{position:absolute;inset:0}
+.hero .txt{position:relative;margin-top:auto;margin-bottom:auto;max-width:720px}
+.hero .meta{font-size:20px;color:var(--mute);margin-top:34px;max-width:none}
+.hero kbd,.slide kbd{font-family:var(--sans);font-size:.85em;border:1px solid rgba(234,243,240,.35);border-radius:5px;padding:1px 7px}
+
+/* Agenda */
+.agenda{display:grid;grid-template-columns:repeat(4,1fr);gap:40px;margin-top:20px}
+.agenda h3{font-family:var(--serif);font-size:30px;border-top:2px solid var(--c,var(--ink));padding-top:14px;margin-bottom:14px}
+.agenda ol{list-style:none;padding:0}
+.agenda li{font-size:23px;margin-bottom:6px;padding-left:2em;text-indent:-2em}
+.agenda a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}
+.agenda a:hover{border-bottom-color:currentColor}
+.agenda .n{color:var(--mute);font-variant-numeric:tabular-nums;display:inline-block;width:2em}
+
+/* Taxonomía */
+.tree{list-style:none;padding:0;margin:0}
+.tree>li{display:grid;grid-template-columns:330px 1fr;gap:24px;padding:14px 0;border-bottom:1px solid var(--rule);margin:0;max-width:none}
+.tree>li>span{font-family:var(--serif);font-size:27px;font-weight:700}
+.tree .ex{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center}
+.chip{font-size:19px;padding:5px 13px;border:1px solid rgba(234,243,240,.28);border-radius:999px;white-space:nowrap}
+.chip.seen{border-color:var(--mute);color:var(--mute)}
+.chip.me{background:var(--esp);color:#06202A;border-color:var(--esp);font-weight:600}
+
+/* Paso a paso */
+ol.steps{list-style:none;padding:0;counter-reset:s}
+ol.steps>li{counter-increment:s;position:relative;padding-left:62px;margin-bottom:18px}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:-2px;width:42px;height:42px;border-radius:50%;border:2px solid var(--esp);display:grid;place-items:center;font-family:var(--serif);font-weight:700;font-size:22px;color:var(--esp)}
+ol.steps ul{margin-top:8px;padding-left:0;list-style:none}
+ol.steps ul li{font-size:21px;margin-bottom:6px}
+
+/* Ejemplo a mano */
+.case{border-left:4px solid var(--c);padding:4px 0 4px 24px}
+.case h3{color:var(--c);font-family:var(--serif);font-size:30px}
+.case p{font-size:22px;margin-bottom:10px}
+.case .calc{font-family:var(--serif);font-size:25px;line-height:1.7;white-space:nowrap}
+.case .res{font-size:22px;margin-top:10px;padding-top:10px;border-top:1px solid var(--rule)}
+
+/* Simulación */
+.sim{display:grid;grid-template-columns:700px 1fr;gap:48px;flex:1;min-height:0}
+.simside{display:flex;flex-direction:column;gap:16px;min-width:0}
+.simside .row{display:flex;gap:10px;flex-wrap:wrap}
+.simside .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px}
+.stats{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;font-size:19px;font-variant-numeric:tabular-nums}
+.stats dt{font-family:var(--sans);font-weight:400;font-size:19px;color:var(--mute)}
+.stats dd{font-size:19px}
+.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:18px}
+.chk{font-size:18px;color:var(--mute);display:flex;gap:8px;align-items:center}
+.chk input{accent-color:var(--esp);width:18px;height:18px}
+
+/* Código */
+pre.code{font-family:var(--mono);font-size:17.5px;line-height:1.55;background:rgba(2,10,16,.6);border-radius:10px;padding:22px 28px;margin:0;overflow:hidden;white-space:pre;color:#D7E4E1}
+.tk-k{color:#F2A97B}.tk-s{color:#B5D98A}.tk-c{color:#7F9AA3;font-style:italic}.tk-n{color:#E9B949}.tk-f{color:#6FD6C9}
+
+.refs li{font-size:19px;line-height:1.45;color:var(--mute);margin-bottom:12px;max-width:none}
+.refs li i{color:var(--ink)}
+.big-q{font-family:var(--serif);font-size:96px;font-weight:700;line-height:1;margin:0}
+.note{font-size:19px;color:var(--mute);border-top:1px solid var(--rule);padding-top:14px;margin-top:auto;max-width:none}
+
+.flow{display:grid;grid-template-columns:1fr 80px 1fr 80px 1fr;align-items:center;margin:34px 0 44px}
+.farrow{justify-self:center}
+.fbox{border:1px solid rgba(234,243,240,.3);border-radius:12px;padding:20px 26px;min-height:150px;display:flex;flex-direction:column;justify-content:center}
+.fbox p{font-size:25px;margin:6px 0 0}
+.fbox.me{background:rgba(111,214,201,.12);border-color:var(--esp);align-items:center;text-align:center}
+.fbox .fw{font-family:var(--serif);font-size:52px;font-weight:700;color:var(--esp);margin:0;line-height:1.1}
+.ex3 h3{font-family:var(--serif);font-size:29px}
+.ex3 p{font-size:24px}
+.video-wrap{flex:1;min-height:0;position:relative;background:rgba(2,10,16,.55);border-radius:12px;overflow:hidden}
+.video-wrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.video-ph{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:2px dashed rgba(234,243,240,.3);border-radius:12px}
+.video-wrap.empty .video-ph{display:flex}.video-wrap.empty video{display:none}
+@media (prefers-reduced-motion: reduce){.slide,.slide.on,body{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="ambient" aria-hidden="true"></canvas>
+<div id="stage">
+
+<!-- 1 · Portada -->
+<section class="slide hero" data-anim="hero" data-ambient="off" aria-label="Portada">
+  <canvas id="cvHero" data-w="1600" data-h="900" aria-hidden="true"></canvas>
+  <div class="txt">
+    <h1>El algoritmo de la ballena jorobada</h1>
+    <p class="lead">Whale Optimization Algorithm (WOA): una técnica de caza con burbujas convertida en método de optimización.</p>
+    <p class="meta">Mirjalili y Lewis, 2016. Algoritmos Bioinspirados.</p>
+    <p class="small">Avanza con <kbd>→</kbd> o la barra espaciadora. Pantalla completa con <kbd>F</kbd>.</p>
+  </div>
+</section>
+
+<!-- 2 · Qué resuelve -->
+<section class="slide" aria-label="Qué problema resuelve">
+  <h2>¿Qué problema resuelve?</h2>
+  <p class="lead" style="max-width:44ch">Encuentra <b>la mejor solución</b> cuando hay demasiadas opciones para probarlas todas.</p>
+  <div class="flow">
+    <div class="fbox"><span class="small">Le das</span><p>Un problema y una forma de medir qué tan buena es cada solución.</p></div>
+    <svg class="farrow" viewBox="0 0 60 24" width="60" height="24" aria-hidden="true"><path d="M2 12 H50 M42 4 L54 12 L42 20" fill="none" stroke="#93AEB6" stroke-width="2.5"/></svg>
+    <div class="fbox me"><p class="fw">WOA</p><span class="small">busca con un grupo de “ballenas”</span></div>
+    <svg class="farrow" viewBox="0 0 60 24" width="60" height="24" aria-hidden="true"><path d="M2 12 H50 M42 4 L54 12 L42 20" fill="none" stroke="#93AEB6" stroke-width="2.5"/></svg>
+    <div class="fbox"><span class="small">Te devuelve</span><p>La mejor solución que encontró.</p></div>
+  </div>
+  <div class="cols3 ex3">
+    <div><h3>Ingeniería</h3><p>¿Qué medidas hacen un resorte más barato sin que se rompa?</p></div>
+    <div><h3>Machine learning</h3><p>¿Qué ajustes hacen más preciso un modelo?</p></div>
+    <div><h3 class="esp">Nuestro ejemplo</h3><p>¿Dónde está un tesoro escondido en un mapa?</p></div>
+  </div>
+  <p class="note">Con solo 10 variables de 100 valores hay 10<sup>20</sup> combinaciones: revisarlas una por una tomaría más de 3 millones de años.</p>
+</section>
+
+<!-- 3 · El reto -->
+<section class="slide" aria-label="El reto: las trampas">
+  <h2>El reto: las trampas</h2>
+  <div class="cols" style="grid-template-columns:1fr 600px;gap:56px">
+    <div>
+      <p class="lead" style="margin-bottom:40px">Buscar la mejor solución es como buscar el punto más bajo de un terreno lleno de valles.</p>
+      <dl>
+        <dt class="esp">Óptimo global</dt><dd>El punto más bajo de todos. Es lo que buscamos.</dd>
+        <dt class="rod">Óptimo local</dt><dd>Un valle que parece el mejor, pero no lo es: una trampa.</dd>
+      </dl>
+      <p style="margin-top:46px"><b>El dilema:</b> ¿<span class="exp">explorar</span> zonas nuevas o <span class="rod">explotar</span>, es decir, afinar lo que ya encontramos?</p>
+    </div>
+    <div style="display:flex;flex-direction:column;justify-content:center">
+      <svg id="svgOpt" viewBox="0 0 760 460" width="600" height="363" role="img" aria-label="Curva con un óptimo global y óptimos locales"></svg>
+      <p class="small">Si solo vamos cuesta abajo, podemos quedarnos atorados en una trampa.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · La red de burbujas -->
+<section class="slide" data-anim="side" aria-label="La ballena jorobada">
+  <h2>La red de burbujas</h2>
+  <div class="cols r">
+    <div class="stack">
+      <p class="lead"><b>Ballena jorobada:</b> 12 a 16 m, hasta 30 toneladas. Come krill y peces pequeños.</p>
+      <ol class="steps" style="margin-top:30px">
+        <li>Encuentra la presa.</li>
+        <li>Baja unos 12 metros.</li>
+        <li>Sube en <b class="esp">espiral</b> soltando burbujas.</li>
+        <li>Las burbujas encierran a la presa y la ballena sale por el centro.</li>
+      </ol>
+    </div>
+    <div style="display:flex;justify-content:center;align-items:center">
+      <canvas id="cvSide" data-w="620" data-h="640" role="img" aria-label="Vista lateral: la ballena sube en espiral soltando burbujas alrededor del krill"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · Del océano al código -->
+<section class="slide" aria-label="Del océano al código">
+  <h2>Del océano al código</h2>
+  <div class="cols r">
+    <table>
+      <thead><tr><th>En el océano</th><th>En el algoritmo</th></tr></thead>
+      <tbody>
+        <tr><td>Ballena</td><td>Solución candidata <var>X</var></td></tr>
+        <tr><td>Océano</td><td>Espacio de búsqueda</td></tr>
+        <tr><td>Grupo de ballenas</td><td>Población</td></tr>
+        <tr class="hl"><td>Presa</td><td>Mejor solución hasta ahora, <var>X*</var></td></tr>
+        <tr><td>Cercanía a la presa</td><td>Función objetivo <var>f</var>(<var>X</var>)</td></tr>
+        <tr><td>Inmersión</td><td>Iteración</td></tr>
+      </tbody>
+    </table>
+    <div class="stack" style="padding-top:20px">
+      <h3>El supuesto clave</h3>
+      <p>Las ballenas <b>no saben</b> dónde está la presa.</p>
+      <p>Suponen que está cerca de <b>la mejor ballena</b> y la siguen.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · Mapa: qué hace cada ballena -->
+<section class="slide" aria-label="Cómo se decide">
+  <h2>¿Qué hace cada ballena?</h2>
+  <p class="lead" style="max-width:none">En cada ronda, cada ballena sortea unos números y hace <b>una de tres cosas</b>:</p>
+  <svg viewBox="0 0 1300 470" width="1300" height="470" role="img" aria-label="Árbol de decisión de WOA" style="margin-top:6px">
+    <g fill="none" stroke="rgba(234,243,240,.45)" stroke-width="2">
+      <path d="M650 92 V140 H330 V190"/><path d="M650 140 H1000 V340"/>
+      <path d="M330 262 V300 H160 V340"/><path d="M330 300 H520 V340"/>
+    </g>
+    <g font-family="Avenir Next,Avenir,Segoe UI,sans-serif" font-size="22" fill="#93AEB6" text-anchor="middle">
+      <text x="470" y="130">p &lt; 0.5</text><text x="840" y="130">p ≥ 0.5</text>
+      <text x="215" y="292">|A| &lt; 1</text><text x="445" y="292">|A| ≥ 1</text>
+    </g>
+    <g font-family="Avenir Next,Avenir,Segoe UI,sans-serif" text-anchor="middle">
+      <rect x="470" y="20" width="360" height="72" rx="10" fill="rgba(4,16,24,.6)" stroke="#EAF3F0" stroke-width="2"/>
+      <text x="650" y="64" font-size="24" fill="#EAF3F0">Sortear p, A, C y l</text>
+      <rect x="180" y="190" width="300" height="72" rx="10" fill="rgba(4,16,24,.6)" stroke="#EAF3F0" stroke-width="2"/>
+      <text x="330" y="234" font-size="24" fill="#EAF3F0">Cerco</text>
+      <rect x="20" y="340" width="280" height="96" rx="10" fill="rgba(242,131,123,.16)" stroke="#F2837B" stroke-width="2"/>
+      <text x="160" y="382" font-size="26" font-weight="600" fill="#F2837B">Rodear</text><text x="160" y="414" font-size="19" fill="#EAF3F0">sigue a la mejor X*</text>
+      <rect x="380" y="340" width="280" height="96" rx="10" fill="rgba(233,185,73,.16)" stroke="#E9B949" stroke-width="2"/>
+      <text x="520" y="382" font-size="26" font-weight="600" fill="#E9B949">Explorar</text><text x="520" y="414" font-size="19" fill="#EAF3F0">sigue a una al azar</text>
+      <rect x="860" y="340" width="280" height="96" rx="10" fill="rgba(111,214,201,.16)" stroke="#6FD6C9" stroke-width="2"/>
+      <text x="1000" y="382" font-size="26" font-weight="600" fill="#6FD6C9">Espiral</text><text x="1000" y="414" font-size="19" fill="#EAF3F0">gira alrededor de X*</text>
+    </g>
+  </svg>
+  <div class="legend" style="font-size:23px;gap:44px;margin-top:26px"><span><var>p</var>: moneda al azar</span><span><var>A</var>: tamaño del paso, se achica con el tiempo</span><span><var>C</var> y <var>l</var>: números al azar</span></div>
+</section>
+
+<!-- 7 · Explorar -->
+<section class="slide" aria-label="Búsqueda de presa">
+  <h2><span class="dot exp"></span>Explorar: buscar presa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="lead">Si <b>|<var>A</var>| ≥ 1</b>, sigue a <b>una ballena al azar</b> y puede dar saltos largos.</p>
+      <div class="eq c-exp"><em>D</em> = | <em>C</em>·<em>X</em><sub>rand</sub> − <em>X</em> |<br><em>X</em>(<em>t</em>+1) = <em>X</em><sub>rand</sub> − <em>A</em>·<em>D</em></div>
+      <p class="mute">Así escapa de las trampas. Solo pasa en la primera mitad.</p>
+    </div>
+    <div class="stack">
+      <canvas id="cvExp" data-w="450" data-h="450" role="img" aria-label="Posiciones posibles al explorar"></canvas>
+      <button id="bExp">Generar otro movimiento</button>
+      <p class="readout" id="txtExp"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · Rodear -->
+<section class="slide" aria-label="Acercamiento a la presa">
+  <h2><span class="dot rod"></span>Rodear: acercarse a la presa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="lead">Si <b>|<var>A</var>| &lt; 1</b>, da un paso hacia <b>la mejor ballena</b> <var>X*</var>.</p>
+      <div class="eq c-rod"><em>D</em> = | <em>C</em>·<em>X*</em> − <em>X</em> |<br><em>X</em>(<em>t</em>+1) = <em>X*</em> − <em>A</em>·<em>D</em></div>
+      <p class="mute"><var>D</var> es la distancia y <var>A</var> el tamaño del paso. Cada vuelta el círculo se cierra más.</p>
+    </div>
+    <div class="stack">
+      <canvas id="cvRod" data-w="450" data-h="450" role="img" aria-label="Posiciones posibles al rodear a la presa"></canvas>
+      <button id="bRod">Generar otro movimiento</button>
+      <p class="readout" id="txtRod"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · Espiral -->
+<section class="slide" data-anim="spiral" aria-label="Red de burbujas en espiral">
+  <h2><span class="dot esp"></span>Espiral: la red de burbujas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="lead">Si <b><var>p</var> ≥ 0.5</b>, gira alrededor de la presa, como al soltar burbujas.</p>
+      <div class="eq c-esp"><em>D′</em> = | <em>X*</em> − <em>X</em> |<br><em>X</em>(<em>t</em>+1) = <em>D′</em>·<em>e</em><sup><em>b</em>·<em>l</em></sup>·cos(2π<em>l</em>) + <em>X*</em></div>
+      <p><var>e</var><sup><var>bl</var></sup> cierra cada vuelta y cos(2π<var>l</var>) la hace girar.</p>
+      <p class="mute"><var>l</var> es un número al azar entre −1 y 1: decide en qué punto de la espiral cae la ballena.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center">
+      <canvas id="cvSpi" data-w="560" data-h="560" role="img" aria-label="Ballena nadando en espiral hacia la presa"></canvas>
+      <p class="small">Vista en 2D de la espiral logarítmica.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · Explorar y explotar -->
+<section class="slide" aria-label="Exploración y explotación">
+  <h2>Primero explorar, después explotar</h2>
+  <div class="cols l">
+    <div class="stack">
+      <p class="lead">Así resuelve WOA el dilema de las trampas.</p>
+      <p style="margin-top:30px"><var>a</var> baja de 2 a 0 y el paso <var>A</var> nunca lo supera:</p>
+      <ul>
+        <li>Al inicio, <b class="exp">25&nbsp;%</b> explora.</li>
+        <li>A la mitad, <b class="exp">0&nbsp;%</b>.</li>
+        <li>Después, todas <b class="rod">afinan</b> cerca de la mejor.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <canvas id="cvProb" data-w="760" data-h="420" role="img" aria-label="Probabilidad de cada comportamiento por iteración"></canvas>
+      <label class="rng"><span>Iteración <var>t</var>, de <var>T</var> = 30</span><output id="oProb">0</output><input id="rProb" type="range" min="0" max="30" value="0"></label>
+      <p class="readout" id="txtProb" style="min-height:2em"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · Ejemplo a mano -->
+<section class="slide" aria-label="Ejemplo a mano">
+  <h2>Un movimiento, a mano</h2>
+  <p style="max-width:none">Tesoro en <b>(3, −2)</b>. Ballena <var>X</var> = (−4, 5), mejor <var>X*</var> = (2, −1), al azar <var>X</var><sub>rand</sub> = (−8, 7).</p>
+  <div class="cols3" style="margin-top:26px">
+    <div class="case" style="--c:var(--rod)">
+      <h3>Rodear</h3>
+      <p><var>A</var> = 0.5, <var>C</var> = 1</p>
+      <div class="calc"><var>D</var> = (6, 6)<br><var>X</var> = (2, −1) − 0.5·(6, 6)<br>= <b>(−1, −4)</b></div>
+      <p class="res">Distancia al tesoro: 9.90 → <b>4.47</b></p>
+    </div>
+    <div class="case" style="--c:var(--exp)">
+      <h3>Explorar</h3>
+      <p><var>A</var> = 1.4, <var>C</var> = 1</p>
+      <div class="calc"><var>D</var> = (4, 2)<br><var>X</var> = (−8, 7) − 1.4·(4, 2)<br>= (−13.6, 4.2) → <b>(−10, 4.2)</b></div>
+      <p class="res">9.90 → <b>14.40</b>: se aleja, está explorando.</p>
+    </div>
+    <div class="case" style="--c:var(--esp)">
+      <h3>Espiral</h3>
+      <p><var>l</var> = −0.5 → <var>e</var><sup>−0.5</sup>·cos(−π) = −0.607</p>
+      <div class="calc"><var>D′</var> = (6, 6)<br><var>X</var> = (6, 6)·(−0.607) + (2, −1)<br>= <b>(−1.64, −4.64)</b></div>
+      <p class="res">9.90 → <b>5.34</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 · Simulación -->
+<section class="slide" data-anim="sim" data-ambient="off" aria-label="Simulación en vivo" style="padding-top:46px">
+  <h2 style="margin-bottom:22px">Simulación en vivo</h2>
+  <div class="sim">
+    <canvas id="cvSim" data-w="700" data-h="700" role="img" aria-label="Mapa de la función con las ballenas moviéndose"></canvas>
+    <div class="simside">
+      <label class="rng" style="grid-template-columns:1fr">Función objetivo
+        <select id="sFun">
+          <option value="tesoro">Tesoro escondido en (3, −2)</option>
+          <option value="rastrigin">Rastrigin desplazada, con muchas trampas</option>
+          <option value="ackley">Ackley desplazada</option>
+          <option value="esfera">Esfera centrada en (0, 0)</option>
+        </select></label>
+      <div class="grid2">
+        <label class="rng">Ballenas<output id="oN">20</output><input id="rN" type="range" min="5" max="60" value="20"></label>
+        <label class="rng">Iteraciones<output id="oT">50</output><input id="rT" type="range" min="10" max="200" step="5" value="50"></label>
+        <label class="rng">Velocidad<output id="oV">4 pasos/s</output><input id="rV" type="range" min="1" max="20" value="4"></label>
+        <label class="chk"><input id="cOpt" type="checkbox" checked>Mostrar el óptimo real</label>
+      </div>
+      <div class="row"><button class="primary" id="bPlay">Iniciar</button><button id="bStep">Un paso</button><button id="bReset">Reiniciar</button></div>
+      <div class="legend"><span class="rod"><span class="dot"></span>Rodea</span><span class="exp"><span class="dot"></span>Explora</span><span class="esp"><span class="dot"></span>Espiral</span><span><span class="dot" style="background:none;border:2px solid var(--ink)"></span>Mejor, <var>X*</var></span></div>
+      <dl class="stats" id="stats"></dl>
+      <canvas id="cvConv" data-w="560" data-h="160" role="img" aria-label="Convergencia: mejor valor por iteración"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- 13 · Código -->
+<section class="slide" aria-label="Código en Python">
+  <h2>El código en Python</h2>
+  <div class="cols" style="grid-template-columns:800px 1fr;gap:50px">
+<pre class="code" data-py>def mover_ballena(ballena, mejor, ballenas, a):
+    A = 2 * a * random.random() - a
+    C = 2 * random.random()
+    p = random.random()
+    l = random.uniform(-1, 1)
+    nueva = []
+
+    if p &lt; 0.5:
+        if abs(A) &lt; 1:
+            guia = mejor                    # rodear
+        else:
+            guia = random.choice(ballenas)  # explorar
+        for d in range(2):
+            D = abs(C * guia[d] - ballena[d])
+            nueva.append(guia[d] - A * D)
+    else:                                   # espiral
+        for d in range(2):
+            D = abs(mejor[d] - ballena[d])
+            nueva.append(D * math.exp(l) * math.cos(2 * math.pi * l)
+                         + mejor[d])
+
+    return [dentro_del_mapa(v) for v in nueva]</pre>
+    <div class="stack">
+      <p>Las tres ecuaciones en <b>una sola función</b>.</p>
+      <p class="mute">Rodear y explorar usan la misma fórmula; solo cambia el guía.</p>
+      <p class="small" style="margin-top:40px">Archivo: woa_tesoro.py, unas 70 líneas, sin librerías.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 14 · Video -->
+<section class="slide" data-ambient="off" aria-label="Video de demostración" style="padding-top:46px">
+  <h2 style="margin-bottom:22px">El algoritmo en funcionamiento</h2>
+  <div class="video-wrap" id="videoWrap">
+    <!-- =====================================================================
+         🎬 TU VIDEO VA AQUÍ
+         1. Copia tu video a la MISMA carpeta que este archivo (woa.html).
+         2. Ponle de nombre:  demo-woa.mp4
+            (o cambia el src="demo-woa.mp4" de abajo por el nombre de tu archivo).
+         Formatos que funcionan en cualquier navegador: .mp4 (H.264) y .webm
+         ===================================================================== -->
+    <video id="vidDemo" src="demo-woa.mp4" controls preload="metadata" playsinline></video>
+    <div class="video-ph">
+      <p class="lead" style="margin:0 0 10px">Aquí va el video de demostración</p>
+      <p class="small">Guarda tu video como <b>demo-woa.mp4</b> en la misma carpeta que woa.html.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 15 · Resultados -->
+<section class="slide" aria-label="Resultados">
+  <h2>Resultados: el tesoro</h2>
+  <div class="cols" style="gap:56px">
+    <div class="stack">
+      <table>
+        <thead><tr><th>Ronda</th><th class="exp">Exploran</th><th>Distancia</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>3</td><td>0.6896</td></tr>
+          <tr><td>8</td><td>4</td><td>0.0163</td></tr>
+          <tr class="hl"><td>16</td><td>0</td><td>0.0148</td></tr>
+          <tr><td>30</td><td>0</td><td>0.0066</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:26px">Real <b>(3, −2)</b>. Encontrado <b>(3.003, −2.006)</b>.</p>
+      <p class="small">10 ballenas, 30 rondas. En 20 corridas, la distancia final promedio fue 0.036.</p>
+    </div>
+    <div class="stack">
+      <canvas id="cvRes" data-w="620" data-h="330" role="img" aria-label="Convergencia de la corrida, escala logarítmica"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- 16 · Comparación -->
+<section class="slide" aria-label="Comparación">
+  <h2>WOA frente a otros</h2>
+  <table>
+    <thead><tr><th></th><th>ACO</th><th>PSO</th><th>GWO</th><th class="esp">WOA</th></tr></thead>
+    <tbody>
+      <tr><td>Inspiración</td><td>Hormigas</td><td>Aves y peces</td><td>Lobos</td><td>Ballenas</td></tr>
+      <tr><td>Año</td><td>1992</td><td>1995</td><td>2014</td><td>2016</td></tr>
+      <tr><td>Quién guía</td><td>Feromona</td><td>Mejor personal y global</td><td>3 líderes</td><td>La mejor o una al azar</td></tr>
+      <tr><td>Parámetros</td><td>α, β, ρ, Q</td><td><var>w</var>, <var>c</var>₁, <var>c</var>₂</td><td>Ninguno</td><td>Ninguno</td></tr>
+      <tr><td>Movimiento</td><td>Construye rutas</td><td>Lineal con inercia</td><td>Promedio de 3</td><td>Lineal o espiral</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Los cuatro son de inteligencia de enjambre: muchos agentes simples que juntos resuelven lo que ninguno podría solo. WOA y GWO son del mismo autor, Seyedali Mirjalili.</p>
+</section>
+
+<!-- 17 · Pros y contras -->
+<section class="slide" aria-label="Fortalezas y debilidades">
+  <h2>Pros y contras</h2>
+  <div class="cols">
+    <div>
+      <h3 class="esp">Fortalezas</h3>
+      <ul>
+        <li>Muy sencillo.</li>
+        <li>Casi sin parámetros.</li>
+        <li>Pasa solo de explorar a explotar.</li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="rod">Debilidades</h3>
+      <ul>
+        <li>Deja de explorar a la mitad.</li>
+        <li>Se atora en funciones con muchas trampas.</li>
+        <li>Favorece soluciones cerca de (0, 0).</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">Hay autores que lo critican por reciclar ideas con una metáfora nueva (Camacho-Villalón y otros, 2023).</p>
+</section>
+
+<!-- 18 · Conclusiones -->
+<section class="slide" aria-label="Conclusiones">
+  <h2>Conclusiones</h2>
+  <ol class="steps" style="margin-top:10px">
+    <li><b>¿Qué resuelve?</b> Encuentra muy buenas soluciones cuando no se puede probar todo.</li>
+    <li><b>¿Cómo?</b> Imitando la red de burbujas: <span class="exp">explorar</span>, <span class="rod">rodear</span> y <span class="esp">espiral</span>.</li>
+    <li><b>¿Por qué funciona?</b> Primero explora para no caer en trampas y después afina.</li>
+    <li><b>¿Funciona?</b> Encontró el tesoro en (3.003, −2.006), a menos de 0.01 del real.</li>
+  </ol>
+</section>
+
+<!-- 19 · Preguntas -->
+<section class="slide" aria-label="Referencias y preguntas">
+  <div class="cols l">
+    <div style="display:flex;flex-direction:column;justify-content:center">
+      <p class="big-q">¿Preguntas?</p>
+      <p class="lead" style="margin-top:24px">Gracias por su atención.</p>
+    </div>
+    <div>
+      <h3 style="margin-bottom:20px">Referencias</h3>
+      <ol class="refs">
+        <li>Mirjalili, S. y Lewis, A. (2016). <i>The Whale Optimization Algorithm</i>. Advances in Engineering Software, 95, 51–67.</li>
+        <li>Mirjalili, S., Mirjalili, S. M. y Lewis, A. (2014). <i>Grey Wolf Optimizer</i>. Advances in Engineering Software, 69, 46–61.</li>
+        <li>Watkins, W. A. y Schevill, W. E. (1979). <i>Aerial observation of feeding behavior in four baleen whales</i>. Journal of Mammalogy, 60(1), 155–163.</li>
+        <li>Kennedy, J. y Eberhart, R. (1995). <i>Particle Swarm Optimization</i>. Proceedings of ICNN’95.</li>
+        <li>Wolpert, D. H. y Macready, W. G. (1997). <i>No Free Lunch Theorems for Optimization</i>. IEEE Transactions on Evolutionary Computation, 1(1), 67–82.</li>
+        <li>Camacho-Villalón, C. L., Dorigo, M. y Stützle, T. (2023). <i>Exposing the grey wolf, moth-flame, whale, firefly, bat, and antlion algorithms: six misleading optimization techniques inspired by bestial metaphors</i>. International Transactions in Operational Research, 30(6).</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- Navegación -->
+<nav id="gauge" aria-label="Diapositivas"><div class="line"></div><div class="depth" id="depth"></div></nav>
+<div id="nav"><span id="count"></span><button id="bPrev" aria-label="Diapositiva anterior">Anterior</button><button id="bNext" aria-label="Diapositiva siguiente">Siguiente</button></div>
+</div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const COL={exp:'#E9B949',rod:'#F2837B',esp:'#6FD6C9',ink:'#EAF3F0',mute:'#93AEB6'};
+const TAU=Math.PI*2;
+const REDUCE=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fmt=(v,n=2)=>(v<0?'−':'')+Math.abs(v).toFixed(n);
+const pt=(p,n=2)=>`(${fmt(p[0],n)}, ${fmt(p[1],n)})`;
+
+function prep(cv){
+  const w=+cv.dataset.w,h=+cv.dataset.h,r=2;
+  cv.style.width=w+'px';cv.style.height=h+'px';cv.width=w*r;cv.height=h*r;
+  const ctx=cv.getContext('2d');ctx.scale(r,r);return {ctx,w,h};
+}
+function rgba(hex,a){const n=parseInt(hex.slice(1),16);return `rgba(${n>>16},${n>>8&255},${n&255},${a})`}
+function circle(ctx,x,y,r){ctx.beginPath();ctx.arc(x,y,r,0,TAU)}
+function whale(ctx,x,y,ang,s,col){
+  ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.scale(s,s);ctx.fillStyle=col;
+  ctx.beginPath();ctx.ellipse(0,0,22,8,0,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.moveTo(-17,0);ctx.lineTo(-33,-9);ctx.lineTo(-28,0);ctx.lineTo(-33,9);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.ellipse(1,10,10,2.4,-.6,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.ellipse(1,-10,10,2.4,.6,0,TAU);ctx.fill();
+  ctx.restore();
+}
+function cross(ctx,x,y,s,col){ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x-s,y-s);ctx.lineTo(x+s,y+s);ctx.moveTo(x+s,y-s);ctx.lineTo(x-s,y+s);ctx.stroke()}
+function arrow(ctx,x1,y1,x2,y2,col){
+  const a=Math.atan2(y2-y1,x2-x1),L=Math.hypot(x2-x1,y2-y1);if(L<2)return;
+  ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2-9*Math.cos(a),y2-9*Math.sin(a));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-13*Math.cos(a-.4),y2-13*Math.sin(a-.4));ctx.lineTo(x2-13*Math.cos(a+.4),y2-13*Math.sin(a+.4));ctx.closePath();ctx.fill();
+}
+function label(ctx,txt,x,y,col,align='left'){ctx.font='17px "Avenir Next",Avenir,"Segoe UI",sans-serif';ctx.fillStyle=col;ctx.textAlign=align;ctx.fillText(txt,x,y)}
+
+/* ================= Navegación ================= */
+const slides=$$('.slide'), N=slides.length, stage=$('#stage');
+let cur=0;
+const gauge=$('#gauge');
+const gaugeH=900-160;
+slides.forEach((s,i)=>{const b=document.createElement('button');b.style.top=(i/(N-1)*gaugeH-9)+'px';b.setAttribute('aria-label','Ir a la diapositiva '+(i+1));b.onclick=()=>go(i);gauge.appendChild(b)});
+const ticks=$$('#gauge button');
+const C0=[18,59,77],C1=[4,13,20];
+function go(i){
+  i=Math.max(0,Math.min(N-1,i));
+  slides[cur].classList.remove('on');ticks[cur].classList.remove('on');
+  cur=i;slides[cur].classList.add('on');ticks[cur].classList.add('on');
+  const k=i/(N-1),c=C0.map((v,j)=>Math.round(v+(C1[j]-v)*k));
+  document.body.style.setProperty('--bg',`rgb(${c})`);
+  $('#depth').style.top=(k*gaugeH-9)+'px';$('#depth').textContent=`${i+1}/${N}`;
+  $('#count').textContent=`${i+1} de ${N}`;
+  history.replaceState(null,'','#'+(i+1));
+  $$('video').forEach(v=>{if(!slides[cur].contains(v))v.pause()});
+  $('#ambient').style.opacity=slides[cur].dataset.ambient==='off'?0:1;
+}
+function fit(){stage.style.setProperty('--s',Math.min(innerWidth/1600,innerHeight/900))}
+addEventListener('resize',fit);fit();
+addEventListener('keydown',e=>{
+  if(e.target.matches('input,select,textarea'))return;
+  if(e.target.matches('video')&&e.key===' ')return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||(e.key===' '&&!e.target.matches('button'))){e.preventDefault();go(cur+1)}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(cur-1)}
+  else if(e.key==='Home')go(0);else if(e.key==='End')go(N-1);
+  else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()}
+});
+$('#bPrev').onclick=()=>go(cur-1);$('#bNext').onclick=()=>go(cur+1);
+$$('.agenda a').forEach(a=>a.onclick=e=>{e.preventDefault();go(+a.getAttribute('href').slice(1)-1)});
+addEventListener('hashchange',()=>{const n=parseInt(location.hash.slice(1));if(n&&n-1!==cur)go(n-1)});
+
+/* ================= Portada: red de burbujas vista desde arriba ================= */
+const ANIM={};
+(()=>{
+  const {ctx,w,h}=prep($('#cvHero'));const cx=1160,cy=450;
+  let bub=[],t0=null;
+  const krill=Array.from({length:90},()=>({a:Math.random()*TAU,r:Math.sqrt(Math.random()),ph:Math.random()*TAU,sp:.6+Math.random()}));
+  function frame(now){
+    if(t0===null)t0=now;let t=(now-t0)/1000;
+    if(t>13){t0=now;t=0;bub=[]}
+    const T=Math.min(t,9.5),th=-1.4+T*1.95,rho=340*Math.exp(-.165*T);
+    const ex=cx+rho*Math.cos(th),ey=cy+rho*Math.sin(th);
+    if(t<9.5)for(let k=0;k<2;k++)bub.push({x:ex+(Math.random()-.5)*16,y:ey+(Math.random()-.5)*16,b:t,r:1.5+Math.random()*3.5});
+    const fade=t>11?Math.max(0,1-(t-11)/2):1;
+    ctx.clearRect(0,0,w,h);
+    // halo
+    const g=ctx.createRadialGradient(cx,cy,0,cx,cy,420);g.addColorStop(0,'rgba(111,214,201,.10)');g.addColorStop(1,'rgba(111,214,201,0)');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+    ctx.lineWidth=1.3;
+    for(const b of bub){const age=t-b.b,a=Math.max(0,.85-age*.055)*fade;if(a<=0)continue;ctx.strokeStyle=`rgba(234,243,240,${a})`;circle(ctx,b.x,b.y,b.r+Math.min(age*1.6,9));ctx.stroke()}
+    // krill que se concentra conforme se cierra la red
+    const R=34+rho*.12;
+    for(const k of krill){const x=cx+Math.cos(k.a+now/1000*.3*k.sp)*k.r*R+Math.sin(now/500+k.ph)*3,y=cy+Math.sin(k.a+now/1000*.3*k.sp)*k.r*R+Math.cos(now/430+k.ph)*3;ctx.fillStyle=rgba(COL.rod,.85*fade+.15);circle(ctx,x,y,2.2);ctx.fill()}
+    if(t<9.5)whale(ctx,ex,ey,th+Math.PI/2+.17,1.25,COL.ink);
+  }
+  ANIM.hero=frame;
+  if(REDUCE){for(let tt=0;tt<=9.4;tt+=1/30)frame(tt*1000)}
+})();
+
+/* ================= Vista lateral: espiral ascendente ================= */
+(()=>{
+  const {ctx,w,h}=prep($('#cvSide'));const cx=340,top=60,bot=600;
+  let bub=[],t0=null;
+  const krill=Array.from({length:60},()=>({x:(Math.random()-.5)*120,y:Math.random()*40,ph:Math.random()*TAU}));
+  const yOf=m=>top+m/12*(bot-top);
+  function frame(now){
+    if(t0===null)t0=now;let t=(now-t0)/1000;if(t>12){t0=now;t=0;bub=[]}
+    const T=Math.min(t,8.5),u=T/8.5,th=T*2.5,rho=170*(1-.3*u),y=bot-u*(bot-top-70),z=Math.sin(th);
+    const ex=cx+rho*Math.cos(th);
+    if(t<8.5)bub.push({x:ex+(Math.random()-.5)*10,y,z,b:t,r:2+Math.random()*3});
+    ctx.clearRect(0,0,w,h);
+    // escala de profundidad
+    ctx.strokeStyle='rgba(234,243,240,.25)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,top);ctx.lineTo(60,bot);ctx.stroke();
+    for(let m=0;m<=12;m+=3){const yy=yOf(m);ctx.beginPath();ctx.moveTo(54,yy);ctx.lineTo(66,yy);ctx.stroke();label(ctx,m+' m',46,yy+6,COL.mute,'right')}
+    ctx.strokeStyle='rgba(234,243,240,.35)';ctx.setLineDash([6,8]);ctx.beginPath();ctx.moveTo(70,top);ctx.lineTo(w-10,top);ctx.stroke();ctx.setLineDash([]);
+    label(ctx,'superficie',w-14,top-12,COL.mute,'right');
+    const fade=t>10?Math.max(0,1-(t-10)/2):1;
+    for(const b of bub){const age=t-b.b,yy=b.y-age*38,a=Math.max(0,(.55+.35*b.z)*(1-age*.09))*fade;if(a<=0||yy<top)continue;ctx.strokeStyle=`rgba(234,243,240,${a})`;ctx.lineWidth=1.2;circle(ctx,b.x+Math.sin(age*3+b.r)*3,yy,b.r+age*.9);ctx.stroke()}
+    for(const k of krill){ctx.fillStyle=rgba(COL.rod,.9);circle(ctx,cx+k.x*(1-.3*u)+Math.sin(now/400+k.ph)*3,top+30+k.y,2.3);ctx.fill()}
+    if(t<8.5){const s=1.1+.25*z;ctx.globalAlpha=.55+.45*(z+1)/2;whale(ctx,ex,y,-Math.PI/2+(Math.cos(th)>0?.35:-.35),s,COL.ink);ctx.globalAlpha=1}
+  }
+  ANIM.side=frame;
+  if(REDUCE){for(let tt=0;tt<=8;tt+=1/30)frame(tt*1000)}
+})();
+
+/* ================= Curva de óptimos (diap. 3) ================= */
+(()=>{
+  const svg=$('#svgOpt'),W=760,H=460,f=x=>.06*(x-1.5)**2-Math.cos(1.8*(x-1.5));
+  const X0=-6,X1=6,ys=[];for(let i=0;i<=300;i++){const x=X0+(X1-X0)*i/300;ys.push([x,f(x)])}
+  const ymin=Math.min(...ys.map(p=>p[1])),ymax=Math.max(...ys.map(p=>p[1]));
+  const sx=x=>30+(x-X0)/(X1-X0)*(W-60),sy=y=>H-60-(y-ymin)/(ymax-ymin)*(H-140);
+  const d=ys.map((p,i)=>(i?'L':'M')+sx(p[0]).toFixed(1)+' '+sy(p[1]).toFixed(1)).join(' ');
+  // mínimo local a la derecha
+  let lx=4,ly=f(4);for(let x=3.5;x<6;x+=.001)if(f(x)<ly){ly=f(x);lx=x}
+  svg.innerHTML=`<path d="${d}" fill="none" stroke="${COL.ink}" stroke-width="3"/>
+  <circle cx="${sx(1.5)}" cy="${sy(f(1.5))}" r="9" fill="${COL.esp}"/>
+  <text x="${sx(1.5)}" y="${sy(f(1.5))+44}" fill="${COL.esp}" font-size="26" text-anchor="middle" font-family="Avenir Next,Avenir,sans-serif">óptimo global</text>
+  <circle cx="${sx(lx)}" cy="${sy(ly)}" r="9" fill="${COL.rod}"/>
+  <text x="${sx(lx)}" y="${sy(ly)+44}" fill="${COL.rod}" font-size="26" text-anchor="middle" font-family="Avenir Next,Avenir,sans-serif">óptimo local</text>
+  <text x="${sx(-5.4)}" y="40" fill="${COL.mute}" font-size="24" font-family="Avenir Next,Avenir,sans-serif">f(x): más abajo es mejor</text>
+`;
+})();
+
+/* ================= Demostraciones de un paso (diap. 9 y 10) ================= */
+function stepDemo(cvId,mode,outId,btnId){
+  const {ctx,w,h}=prep($(cvId)),L=10,pad=22;
+  const sx=x=>pad+(x+L)/(2*L)*(w-2*pad),sy=y=>h-pad-(y+L)/(2*L)*(h-2*pad);
+  const X=[-4,5],B=[2,-1],R=[-8,7],TR=[3,-2],clamp=v=>Math.max(-L,Math.min(L,v));
+  const col=mode==='exp'?COL.exp:COL.rod,guide=mode==='exp'?R:B;
+  function sample(){
+    const C=2*Math.random(),A=mode==='exp'?(Math.random()<.5?-1:1)*(1+Math.random()):Math.random()*2-1;
+    const D=guide.map((g,d)=>Math.abs(C*g-X[d])),raw=guide.map((g,d)=>g-A*D[d]);
+    return {A,C,D,raw,np:raw.map(clamp)};
+  }
+  const cloud=Array.from({length:400},sample);let cur=sample();
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle='rgba(4,16,24,.45)';ctx.fillRect(sx(-L),sy(L),sx(L)-sx(-L),sy(-L)-sy(L));
+    ctx.strokeStyle='rgba(234,243,240,.08)';ctx.lineWidth=1;
+    for(let v=-10;v<=10;v+=5){ctx.beginPath();ctx.moveTo(sx(v),sy(-L));ctx.lineTo(sx(v),sy(L));ctx.moveTo(sx(-L),sy(v));ctx.lineTo(sx(L),sy(v));ctx.stroke()}
+    ctx.strokeStyle='rgba(234,243,240,.3)';ctx.strokeRect(sx(-L),sy(L),sx(L)-sx(-L),sy(-L)-sy(L));
+    for(const c of cloud){ctx.fillStyle=rgba(col,.32);circle(ctx,sx(c.np[0]),sy(c.np[1]),2.6);ctx.fill()}
+    cross(ctx,sx(TR[0]),sy(TR[1]),8,COL.ink);label(ctx,'tesoro',sx(TR[0])+12,sy(TR[1])+22,COL.mute);
+    if(mode==='exp'){ctx.strokeStyle=COL.exp;ctx.lineWidth=2.5;circle(ctx,sx(R[0]),sy(R[1]),11);ctx.stroke();label(ctx,'ballena al azar',sx(R[0])-4,sy(R[1])-18,COL.exp)}
+    ctx.strokeStyle=COL.ink;ctx.lineWidth=2.5;circle(ctx,sx(B[0]),sy(B[1]),12);ctx.stroke();label(ctx,'mejor, X*',sx(B[0])+16,sy(B[1])-12,COL.ink);
+    ctx.fillStyle=COL.ink;circle(ctx,sx(X[0]),sy(X[1]),7);ctx.fill();label(ctx,'ballena X',sx(X[0])+12,sy(X[1])-12,COL.ink);
+    arrow(ctx,sx(X[0]),sy(X[1]),sx(cur.np[0]),sy(cur.np[1]),col);
+    ctx.fillStyle=col;circle(ctx,sx(cur.np[0]),sy(cur.np[1]),8);ctx.fill();
+  }
+  function text(){
+    const g=mode==='exp'?'<var>X</var><sub>rand</sub>':'<var>X*</var>';
+    const d0=Math.hypot(X[0]-TR[0],X[1]-TR[1]),d1=Math.hypot(cur.np[0]-TR[0],cur.np[1]-TR[1]);
+    const clipped=cur.raw.some(v=>Math.abs(v)>L);
+    $(outId).innerHTML=`<var>A</var> = ${fmt(cur.A)}, <var>C</var> = ${cur.C.toFixed(2)} → nueva posición ${pt(cur.np)}${clipped?' <span class="mute">(recortada)</span>':''}<br>`+
+      `<span class="mute">Distancia al tesoro: ${d0.toFixed(2)} → ${d1.toFixed(2)}</span>`;
+  }
+  $(btnId).onclick=()=>{cur=sample();draw();text()};draw();text();
+}
+stepDemo('#cvExp','exp','#txtExp','#bExp');
+stepDemo('#cvRod','rod','#txtRod','#bRod');
+
+/* ================= Espiral ================= */
+(()=>{
+
+  const S=prep($('#cvSpi')),cx=S.w/2,cy=S.h/2,D=95;let t0=null,bub=[];
+  const pos=l=>[cx+D*Math.exp(l)*Math.cos(TAU*l),cy-D*Math.exp(l)*Math.sin(TAU*l)];
+  function frame(now){
+    if(t0===null)t0=now;let t=(now-t0)/1000;if(t>7){t0=now;t=0;bub=[]}
+    const c=S.ctx,u=Math.min(t/5.5,1),l=1-2*u,[x,y]=pos(l);
+    if(t<5.5)bub.push({x:x+(Math.random()-.5)*8,y:y+(Math.random()-.5)*8,b:t,r:1.5+Math.random()*3});
+    c.clearRect(0,0,S.w,S.h);
+    c.strokeStyle='rgba(111,214,201,.28)';c.lineWidth=2;c.setLineDash([5,7]);c.beginPath();
+    for(let i=0;i<=400;i++){const [px,py]=pos(1-i/200);i?c.lineTo(px,py):c.moveTo(px,py)}c.stroke();c.setLineDash([]);
+    for(const b of bub){const age=t-b.b,a=Math.max(0,.8-age*.11);c.strokeStyle=`rgba(234,243,240,${a})`;c.lineWidth=1.2;circle(c,b.x,b.y,b.r+age*1.4);c.stroke()}
+    for(let k=0;k<26;k++){const a=k*2.4,rr=4+(k%7)*2.4;c.fillStyle=rgba(COL.rod,.9);circle(c,cx+Math.cos(a+now/900)*rr,cy+Math.sin(a+now/900)*rr,2);c.fill()}
+    c.strokeStyle=COL.ink;c.lineWidth=2.5;circle(c,cx,cy,22);c.stroke();label(c,'X*, la presa',cx+28,cy+40,COL.ink);
+    const [x2,y2]=pos(l-.01),ang=Math.atan2(y2-y,x2-x);
+    if(t<5.5)whale(c,x,y,ang,1.1,COL.esp);
+    label(c,'l = 1',pos(1)[0]-50,pos(1)[1]+6,COL.mute,'right');
+  }
+  ANIM.spiral=frame;
+  if(REDUCE){for(let tt=0;tt<=5.4;tt+=1/30)frame(tt*1000)}
+})();
+
+/* ================= Probabilidades (diap. 13) ================= */
+(()=>{
+  const {ctx,w,h}=prep($('#cvProb')),r=$('#rProb'),T=30,L=60,B=44,Rr=20,Tp=20;
+  const pe=t=>{const a=2-2*t/T;return a>1?.5*(a-1)/a:0};
+  const sx=t=>L+t/T*(w-L-Rr),sy=p=>h-B-p*(h-B-Tp);
+  function band(lo,hi,col){ctx.fillStyle=col;ctx.beginPath();for(let i=0;i<=300;i++){const t=i/300*T;ctx.lineTo(sx(t),sy(hi(t)))}for(let i=300;i>=0;i--){const t=i/300*T;ctx.lineTo(sx(t),sy(lo(t)))}ctx.closePath();ctx.fill()}
+  function draw(){
+    const t=+r.value;$('#oProb').textContent=t;ctx.clearRect(0,0,w,h);
+    band(()=>0,()=>.5,rgba(COL.esp,.75));
+    band(()=>.5,t=>1-pe(t),rgba(COL.rod,.75));
+    band(t=>1-pe(t),()=>1,rgba(COL.exp,.85));
+    for(const p of [0,.25,.5,.75,1])label(ctx,Math.round(p*100)+' %',L-10,sy(p)+6,COL.mute,'right');
+    for(const tt of [0,15,30])label(ctx,String(tt),sx(tt),h-16,COL.mute,'center');
+    ctx.font='600 20px "Avenir Next",Avenir,sans-serif';ctx.fillStyle='#06202A';ctx.textAlign='left';
+    ctx.fillText('espiral',sx(20),sy(.25)+7);ctx.fillText('rodear',sx(20),sy(.75)+7);ctx.fillText('explorar',sx(1),sy(.93)+7);
+    ctx.strokeStyle=COL.ink;ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(sx(t),sy(0));ctx.lineTo(sx(t),sy(1));ctx.stroke();
+    const e=pe(t);
+    $('#txtProb').innerHTML=`En la iteración ${t}: <b class="exp">explorar ${Math.round(e*100)} %</b>, <b class="rod">rodear ${Math.round((.5-e)*100)} %</b>, <b class="esp">espiral 50 %</b>.`;
+  }
+  r.oninput=draw;draw();
+})();
+
+/* ================= Simulación (diap. 16) ================= */
+(()=>{
+  const FUN={
+    tesoro:{L:10,opt:[3,-2],f:(x,y)=>Math.hypot(x-3,y+2)},
+    rastrigin:{L:5,opt:[1.8,-2.2],f:(x,y)=>{const a=x-1.8,b=y+2.2;return 20+a*a+b*b-10*(Math.cos(TAU*a)+Math.cos(TAU*b))}},
+    ackley:{L:5,opt:[-1.5,2.5],f:(x,y)=>{const a=x+1.5,b=y-2.5;return -20*Math.exp(-.2*Math.sqrt(.5*(a*a+b*b)))-Math.exp(.5*(Math.cos(TAU*a)+Math.cos(TAU*b)))+Math.E+20}},
+    esfera:{L:10,opt:[0,0],f:(x,y)=>x*x+y*y}
+  };
+  const S=prep($('#cvSim')),Cv=prep($('#cvConv')),heat=document.createElement('canvas'),HR=240;heat.width=heat.height=HR;
+  let F,pop,best,t,T,n,hist,counts,playing=false,lastStep=0,dur=250;
+  const sx=x=>(x+F.L)/(2*F.L)*S.w,sy=y=>(F.L-y)/(2*F.L)*S.h;
+  const ev=p=>F.f(p[0],p[1]);
+  function buildHeat(){
+    const hc=heat.getContext('2d'),img=hc.createImageData(HR,HR),v=new Float64Array(HR*HR);let mn=Infinity,mx=-Infinity;
+    for(let j=0;j<HR;j++)for(let i=0;i<HR;i++){const x=-F.L+(i+.5)/HR*2*F.L,y=F.L-(j+.5)/HR*2*F.L,val=F.f(x,y);v[j*HR+i]=val;if(val<mn)mn=val;if(val>mx)mx=val}
+    const lo=[96,140,156],hi=[6,22,32];
+    for(let k=0;k<v.length;k++){let q=Math.sqrt((v[k]-mn)/(mx-mn));const band=Math.floor(q*16)/16;q=band*.8+q*.2;const odd=Math.floor(Math.sqrt((v[k]-mn)/(mx-mn))*16)%2?6:0;
+      for(let c=0;c<3;c++)img.data[k*4+c]=lo[c]+(hi[c]-lo[c])*q+odd;img.data[k*4+3]=255}
+    hc.putImageData(img,0,0);
+  }
+  function reset(){
+    F=FUN[$('#sFun').value];n=+$('#rN').value;T=+$('#rT').value;buildHeat();
+    pop=Array.from({length:n},()=>{const p=[(Math.random()*2-1)*F.L,(Math.random()*2-1)*F.L];return {p,prev:p.slice(),fit:ev(p),role:'ini'}});
+    best=null;for(const o of pop)if(!best||o.fit<best.fit)best={p:o.p.slice(),fit:o.fit};
+    t=0;hist=[best.fit];counts={rod:0,exp:0,esp:0};playing=false;$('#bPlay').textContent='Iniciar';stats();drawConv();
+  }
+  function step(){
+    if(t>=T)return false;
+    const a=2-2*t/T,L=F.L;counts={rod:0,exp:0,esp:0};
+    for(const o of pop){
+      const A=2*a*Math.random()-a,C=2*Math.random(),p=Math.random(),l=Math.random()*2-1,b=best.p;let np;
+      if(p<.5){const g=Math.abs(A)<1?b:pop[Math.random()*pop.length|0].p;o.role=Math.abs(A)<1?'rod':'exp';np=g.map((gd,d)=>gd-A*Math.abs(C*gd-o.p[d]))}
+      else{o.role='esp';const k=Math.exp(l)*Math.cos(TAU*l);np=b.map((bd,d)=>Math.abs(bd-o.p[d])*k+bd)}
+      o.prev=o.p;o.p=np.map(v=>Math.max(-L,Math.min(L,v)));o.fit=ev(o.p);counts[o.role]++;
+      if(o.fit<best.fit)best={p:o.p.slice(),fit:o.fit};
+    }
+    t++;hist.push(best.fit);stats();drawConv();return true;
+  }
+  const num=v=>v===0?'0':(Math.abs(v)<1e-3||Math.abs(v)>=1e4)?v.toExponential(2).replace('-','−'):v.toFixed(4);
+  function stats(){
+    const a=Math.max(0,2-2*t/T),d=Math.hypot(best.p[0]-F.opt[0],best.p[1]-F.opt[1]);
+    $('#stats').innerHTML=`<dt>Iteración</dt><dd>${t} de ${T}</dd><dt><var>a</var></dt><dd>${a.toFixed(2)}</dd>`+
+      `<dt>Mejor <var>f</var>(<var>X*</var>)</dt><dd>${num(best.fit)}</dd><dt>Mejor posición</dt><dd>${pt(best.p,4)}</dd>`+
+      `<dt>Óptimo real</dt><dd>${pt(F.opt,1)}, a ${num(d)} de distancia</dd>`+
+      `<dt>En este paso</dt><dd><span class="rod">${counts.rod} rodean</span>, <span class="exp">${counts.exp} exploran</span>, <span class="esp">${counts.esp} en espiral</span></dd>`;
+  }
+  function drawConv(){
+    const c=Cv.ctx,w=Cv.w,h=Cv.h,L=64,lg=hist.map(v=>Math.log10(Math.max(v,1e-12)));
+    let mn=Math.min(...lg),mx=Math.max(...lg);if(mx-mn<1){mn=Math.floor(mn);mx=mn+1}mn=Math.floor(mn);mx=Math.ceil(mx);
+    const sx2=i=>L+i/T*(w-L-10),sy2=v=>h-26-(v-mn)/(mx-mn)*(h-46);
+    c.clearRect(0,0,w,h);label(c,'mejor f(X*) por iteración, escala logarítmica',L,14,COL.mute);
+    c.strokeStyle='rgba(234,243,240,.2)';c.lineWidth=1;c.beginPath();c.moveTo(L,sy2(mn));c.lineTo(w-10,sy2(mn));c.moveTo(L,sy2(mn));c.lineTo(L,sy2(mx));c.stroke();
+    const tk=k=>k>=-3&&k<=4?String(10**k).replace(/^0\./,'.'):'1e'+k;label(c,tk(mx),L-8,sy2(mx)+6,COL.mute,'right');label(c,tk(mn),L-8,sy2(mn)+4,COL.mute,'right');
+    c.strokeStyle=COL.esp;c.lineWidth=2.5;c.beginPath();lg.forEach((v,i)=>i?c.lineTo(sx2(i),sy2(v)):c.moveTo(sx2(i),sy2(v)));c.stroke();
+  }
+  function frame(now){
+    dur=1000/+$('#rV').value;
+    if(playing&&now-lastStep>=dur){if(!step()){playing=false;$('#bPlay').textContent='Repetir'}lastStep=now}
+    const k=playing?Math.min(1,(now-lastStep)/(dur*.85)):1,e=k<.5?2*k*k:1-(-2*k+2)**2/2,c=S.ctx;
+    c.imageSmoothingEnabled=true;c.drawImage(heat,0,0,S.w,S.h);
+    if($('#cOpt').checked)cross(c,sx(F.opt[0]),sy(F.opt[1]),9,'#FFFFFF');
+    for(const o of pop){const col=COL[o.role]||COL.ink;c.strokeStyle=rgba(col,.45);c.lineWidth=1.5;c.beginPath();c.moveTo(sx(o.prev[0]),sy(o.prev[1]));c.lineTo(sx(o.prev[0]+(o.p[0]-o.prev[0])*e),sy(o.prev[1]+(o.p[1]-o.prev[1])*e));c.stroke()}
+    for(const o of pop){const col=COL[o.role]||COL.ink,x=o.prev[0]+(o.p[0]-o.prev[0])*e,y=o.prev[1]+(o.p[1]-o.prev[1])*e;c.fillStyle=col;c.strokeStyle='rgba(4,16,24,.8)';c.lineWidth=2;circle(c,sx(x),sy(y),6.5);c.fill();c.stroke()}
+    const pr=REDUCE?0:(now/900)%1;c.strokeStyle='#FFFFFF';c.lineWidth=2.5;circle(c,sx(best.p[0]),sy(best.p[1]),12);c.stroke();
+    if(!REDUCE){c.strokeStyle=`rgba(255,255,255,${1-pr})`;c.lineWidth=1.5;circle(c,sx(best.p[0]),sy(best.p[1]),12+pr*16);c.stroke()}
+  }
+  ANIM.sim=frame;
+  $('#bPlay').onclick=()=>{if(t>=T){reset();playing=true}else playing=!playing;$('#bPlay').textContent=playing?'Pausar':'Continuar';lastStep=performance.now()-dur};
+  $('#bStep').onclick=()=>{playing=false;$('#bPlay').textContent=t>=T?'Repetir':'Continuar';step()};
+  $('#bReset').onclick=reset;
+  $('#sFun').onchange=reset;
+  $('#rN').oninput=()=>{$('#oN').textContent=$('#rN').value;reset()};
+  $('#rT').oninput=()=>{$('#oT').textContent=$('#rT').value;reset()};
+  $('#rV').oninput=()=>{$('#oV').textContent=$('#rV').value+' pasos/s'};
+  reset();frame(performance.now());
+})();
+
+/* ================= Gráfica de resultados (diap. 18) ================= */
+(()=>{
+  const {ctx,w,h}=prep($('#cvRes'));
+  const d=[3.3904,.68963,.503454,.354793,.354793,.26756,.093048,.073245,.016314,.016314,.016314,.016314,.016314,.016314,.016314,.016314,.014772,.01426,.01426,.014121,.013801,.013801,.013801,.013801,.008735,.008735,.008735,.008735,.006579,.006579,.006572];
+  const L=60,B=40,lg=d.map(Math.log10),mn=-3,mx=1;
+  const sx=i=>L+i/30*(w-L-14),sy=v=>h-B-(v-mn)/(mx-mn)*(h-B-24);
+  label(ctx,'distancia de la mejor ballena al tesoro, por ronda',L,14,COL.mute);
+  ctx.strokeStyle='rgba(234,243,240,.15)';ctx.lineWidth=1;
+  for(let v=mn;v<=mx;v++){ctx.beginPath();ctx.moveTo(L,sy(v));ctx.lineTo(w-14,sy(v));ctx.stroke();label(ctx,v>=0?String(10**v):String(10**v).replace('0.','.'),L-8,sy(v)+6,COL.mute,'right')}
+  for(const r of [0,8,16,24,30])label(ctx,String(r),sx(r),h-14,COL.mute,'center');
+  ctx.fillStyle=rgba(COL.exp,.12);ctx.fillRect(sx(0),sy(mx),sx(15)-sx(0),sy(mn)-sy(mx));
+  label(ctx,'todavía se explora',sx(7.5),sy(mx)+22,COL.exp,'center');
+  ctx.strokeStyle=COL.esp;ctx.lineWidth=3;ctx.beginPath();lg.forEach((v,i)=>i?ctx.lineTo(sx(i),sy(v)):ctx.moveTo(sx(i),sy(v)));ctx.stroke();
+  ctx.fillStyle=COL.esp;circle(ctx,sx(30),sy(lg[30]),5);ctx.fill();
+})();
+
+/* ================= Resaltado de Python ================= */
+$$('pre[data-py]').forEach(pre=>{
+  const src=pre.textContent,esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const re=/(#.*$)|("(?:[^"\\]|\\.)*")|\b(def|if|else|for|in|return|import|and|or|not)\b|\b(\d+(?:\.\d+)?)\b|\b([a-z_]+)(?=\()/gm;
+  let out='',i=0,m;
+  while((m=re.exec(src))){out+=esc(src.slice(i,m.index));const cls=m[1]?'c':m[2]?'s':m[3]?'k':m[4]?'n':'f';out+=`<span class="tk-${cls}">${esc(m[0])}</span>`;i=re.lastIndex}
+  pre.innerHTML=out+esc(src.slice(i));
+});
+
+
+/* ================= Video de demostración ================= */
+(()=>{
+  const v=$('#vidDemo'),wrap=$('#videoWrap');
+  const empty=()=>wrap.classList.add('empty');
+  v.addEventListener('error',empty);
+  v.addEventListener('loadedmetadata',()=>wrap.classList.remove('empty'));
+  if(v.error)empty();
+})();
+
+/* ================= Ballenas de fondo (sutiles) ================= */
+const AMBIENT=(()=>{
+  const cv=$('#ambient'),ctx=cv.getContext('2d');let W=0,H=0;
+  function size(){const r=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*r;cv.height=H*r;ctx.setTransform(r,0,0,r,0,0)}
+  addEventListener('resize',size);size();
+  const pod=[{x:.15,y:.24,s:1.5,v:16,ph:0,a:.055},{x:.65,y:.74,s:2.4,v:10,ph:2.1,a:.035},{x:.95,y:.52,s:.9,v:22,ph:4.2,a:.05}];
+  let bub=[];
+  function body(){ // silueta lateral de ballena jorobada, mirando a la derecha
+    ctx.beginPath();ctx.moveTo(95,0);
+    ctx.bezierCurveTo(88,-15,40,-22,-10,-18);ctx.bezierCurveTo(-45,-15,-72,-8,-88,-3);
+    ctx.lineTo(-114,-19);ctx.lineTo(-104,0);ctx.lineTo(-114,17);ctx.lineTo(-88,4);
+    ctx.bezierCurveTo(-60,11,-20,21,22,18);ctx.bezierCurveTo(58,15,86,10,95,0);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(42,12);ctx.quadraticCurveTo(12,42,-28,50);ctx.quadraticCurveTo(2,34,26,14);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(-30,-17);ctx.lineTo(-40,-25);ctx.lineTo(-46,-15);ctx.closePath();ctx.fill();
+  }
+  function frame(now){
+    ctx.clearRect(0,0,W,H);const span=W+500,t=now/1000;
+    for(const w of pod){
+      const x=((w.x*span+t*w.v)%span)-250,y=w.y*H+Math.sin(t/3+w.ph)*16;
+      ctx.save();ctx.translate(x,y);ctx.rotate(Math.cos(t/3+w.ph)*.05);ctx.scale(w.s,w.s);
+      ctx.fillStyle=`rgba(234,243,240,${w.a})`;body();ctx.restore();
+      if(!REDUCE&&Math.random()<.012)bub.push({x:x+80*w.s,y:y-14*w.s,r:2+Math.random()*3,b:t,a:w.a*2.2});
+    }
+    bub=bub.filter(b=>t-b.b<6);
+    for(const b of bub){const age=t-b.b;ctx.strokeStyle=`rgba(234,243,240,${b.a*(1-age/6)})`;ctx.lineWidth=1.2;circle(ctx,b.x+Math.sin(age*2+b.r)*4,b.y-age*28,b.r+age*.6);ctx.stroke()}
+  }
+  if(REDUCE)frame(0);
+  return frame;
+})();
+
+/* ================= Bucle de animación ================= */
+function loop(now){requestAnimationFrame(loop);if(!REDUCE&&slides[cur].dataset.ambient!=='off')AMBIENT(now);const a=slides[cur].dataset.anim;if(a&&ANIM[a]&&!(REDUCE&&a!=='sim'))ANIM[a](now)}
+go(Math.max(0,(parseInt(location.hash.slice(1))||1)-1));
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
